@@ -6,23 +6,47 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
-func sender(nickname string, conn net.Conn) {
+type stopwatch struct {
+	start time.Time
+	end   time.Time
+}
 
+func (sw stopwatch) getTime() string {
+	timeElapsed := sw.end.Sub(sw.start)
+	fmt.Println(timeElapsed)
+	return timeElapsed.String()
+}
+
+var sw stopwatch
+
+// Thread to send messages to another client
+func sender(nickname string, conn net.Conn) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		text, _ := reader.ReadString('\n')
 		message := nickname + ": " + text
+		sw.start = time.Now()
+		conn.Write([]byte("1\n"))
 		fmt.Fprint(conn, message+"\n")
 	}
 }
 
+// Thread to receive messages and print on screen
 func receiver(conn net.Conn) {
 	for {
 		reader := bufio.NewReader(conn)
 		message, _ := reader.ReadString('\n')
-		fmt.Print(message)
+		if message == "1\n" {
+			message, _ := reader.ReadString('\n')
+			conn.Write([]byte("2\n"))
+			fmt.Print(message)
+		} else if message == "2\n" {
+			sw.end = time.Now()
+			sw.getTime()
+		}
 	}
 }
 
@@ -45,7 +69,6 @@ func openConnection(nickname, port string, conn net.Conn, listener net.Listener)
 func startConnection(nickname, destiny string, conn net.Conn) {
 	conn, err := net.Dial("tcp", destiny)
 	if err != nil {
-		fmt.Println(err)
 		return
 	}
 	go sender(nickname, conn)
@@ -64,6 +87,7 @@ func main() {
 	// Connection variable
 	var conn net.Conn
 	var listener net.Listener
+
 	go openConnection(*nicknamePtr, *portPtr, conn, listener)
 	go startConnection(*nicknamePtr, *destinyPtr, conn)
 	for {
