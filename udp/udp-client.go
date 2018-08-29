@@ -18,7 +18,11 @@ type stopwatch struct {
 
 func (sw stopwatch) getTime() string {
 	timeElapsed := sw.end.Sub(sw.start)
-	fmt.Println(timeElapsed)
+	if debug {
+		output, _ := os.OpenFile("./output.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		output.Write([]byte(timeElapsed.String() + "\n"))
+		output.Close()
+	}
 	return timeElapsed.String()
 }
 
