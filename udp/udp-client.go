@@ -26,25 +26,41 @@ var sw stopwatch
 var debug bool
 
 // Thread to send messages to another client
-func sender(nickname string, conn net.Conn) {
+func sender(nickname string, conn *net.UDPConn, addr *net.UDPAddr) {
+	if addr == nil {
+		buffer := make([]byte, 1024)
+		_, addr, _ = conn.ReadFromUDP(buffer)
+		fmt.Println("ok")
+	}
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		text, _ := reader.ReadString('\n')
 		message := nickname + ": " + text
 		sw.start = time.Now()
-		conn.Write([]byte("1\n"))
-		fmt.Fprint(conn, message+"\n")
+		_, err := conn.WriteToUDP([]byte("1\n"), addr)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Fprint(conn, message)
 	}
 }
 
 // Thread to receive messages and print on screen
-func receiver(conn net.Conn) {
-	reader := bufio.NewReader(conn)
+func receiver(conn *net.UDPConn) {
+	buffer := make([]byte, 1024)
 	for {
-		message, _ := reader.ReadString('\n')
+		n, addr, err := conn.ReadFromUDP(buffer)
+		if err != nil {
+			fmt.Println(err)
+		}
+		message := string(buffer[:n])
 		if message == "1\n" {
-			message, _ := reader.ReadString('\n')
-			conn.Write([]byte("2\n"))
+			n, addr, err = conn.ReadFromUDP(buffer)
+			if err != nil {
+				fmt.Println(err)
+			}
+			message = string(buffer[:n])
+			conn.WriteToUDP([]byte("2\n"), addr)
 			fmt.Print(message)
 		} else if message == "2\n" {
 			sw.end = time.Now()
@@ -54,27 +70,30 @@ func receiver(conn net.Conn) {
 }
 
 // Open a socket for connection
-func openTCPConnection(nickname, port string, conn net.Conn, listener net.Listener) {
-	listener, err := net.Listen("tcp", ":"+port)
+func openUDPConnection(nickname, destiny, port string) {
+	addr, _ := net.ResolveUDPAddr("udp4", "localhost:"+port)
+	conn, err := net.ListenUDP("udp4", addr)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	conn, err = listener.Accept()
-	if err != nil {
-		return
-	}
-	go sender(nickname, conn)
+	go sender(nickname, conn, nil)
 	go receiver(conn)
 }
 
 // Sucessful connect to another client
-func startTCPConnection(nickname, destiny string, conn net.Conn) {
-	conn, err := net.Dial("tcp", destiny)
+func startUDPConnection(nickname, destiny string) {
+	addr, _ := net.ResolveUDPAddr("udp4", destiny)
+	conn, err := net.DialUDP("udp4", nil, addr)
 	if err != nil {
 		return
 	}
-	go sender(nickname, conn)
+	time.Sleep(time.Second * 5)
+	_, err = conn.WriteToUDP([]byte("1\n"), addr)
+	if err != nil {
+		fmt.Println(err)
+	}
+	go sender(nickname, conn, addr)
 	go receiver(conn)
 }
 
@@ -98,12 +117,8 @@ func main() {
 	fmt.Println("Destiny: ", *destinyPtr)
 	debug = *debugPtr
 
-	// Connection variable
-	var conn net.Conn
-	var listener net.Listener
-
-	go openTCPConnection(*nicknamePtr, *portPtr, conn, listener)
-	go startTCPConnection(*nicknamePtr, *destinyPtr, conn)
+	go openUDPConnection(*nicknamePtr, *destinyPtr, *portPtr)
+	go startUDPConnection(*nicknamePtr, *destinyPtr)
 	for {
 	}
 }
